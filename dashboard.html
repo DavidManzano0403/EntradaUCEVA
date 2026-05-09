@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Acceso IoT - UCEVA</title>
+<!-- Fuentes e Iconos -->
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    /* Paleta UCEVA Refinada */
+    --primary:     #00914c;
+    --primary-glow: rgba(0, 145, 76, 0.3);
+    --accent:      #00e5a0;
+    
+    /* Dark Mode (Default) */
+    --bg:          #08090b;
+    --surface:     rgba(18, 20, 25, 0.7);
+    --surface-solid: #121419;
+    --border:      rgba(255, 255, 255, 0.08);
+    --text:        #f3f4f6;
+    --text-muted:  #9ca3af;
+    --danger:      #ff4d6d;
+    --warning:     #ffb300;
+    --success:     #00e5a0;
+    
+    /* Glassmorphism */
+    --glass-bg:    rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --blur:        12px;
+  }
+
+  body.light-mode {
+    --bg:          #f8fafc;
+    --surface:     rgba(255, 255, 255, 0.7);
+    --surface-solid: #ffffff;
+    --border:      rgba(0, 0, 0, 0.06);
+    --text:        #1e293b;
+    --text-muted:  #64748b;
+    --glass-bg:    rgba(0, 0, 0, 0.02);
+    --glass-border: rgba(0, 0, 0, 0.06);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-font-smoothing: antialiased; }
+  
+  body { 
+    display:flex; background:var(--bg); color:var(--text); 
+    font-family:'Outfit', sans-serif; min-height:100vh; overflow:hidden;
+    transition: background 0.4s ease;
+  }
+  
+  /* ── Sidebar Glassmorphism ── */
+  nav {
+    width:280px; background:var(--surface); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; padding:32px 0; flex-shrink:0;
+    backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+    z-index: 100;
+  }
+  .nav-header { padding:0 32px 32px; margin-bottom:20px; }
+  .logo { display:flex; align-items:center; gap:16px; }
+  .logo-icon {
+    width:48px; height:48px; background:#fff; border-radius:14px;
+    display:flex; align-items:center; justify-content:center; padding:6px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+  }
+  .logo-icon img { width:100%; height:100%; object-fit:contain; }
+  .logo h1 { font-size:18px; font-weight:700; letter-spacing:-0.5px; line-height:1; }
+  .logo span { font-size:11px; color:var(--primary); font-weight:600; text-transform:uppercase; letter-spacing:1px; }
+
+  .nav-items { flex:1; margin-top:20px; }
+  .nav-item {
+    padding:14px 32px; display:flex; align-items:center; gap:14px;
+    color:var(--text-muted); text-decoration:none; cursor:pointer;
+    transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border-left:4px solid transparent;
+    font-size:15px; font-weight:500;
+  }
+  .nav-item:hover { color:var(--text); background:var(--glass-bg); }
+  .nav-item.active {
+    background: linear-gradient(90deg, var(--primary-glow), transparent);
+    color: var(--success);
+    border-left-color: var(--primary);
+  }
+  .nav-item i { width:20px; height:20px; }
+
+  /* ── Main Layout ── */
+  .content-area { flex:1; display:flex; flex-direction:column; height:100vh; overflow-y:auto; position:relative; }
+  
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 40px; border-bottom:1px solid var(--border);
+    background:var(--surface); backdrop-filter:blur(var(--blur));
+    position:sticky; top:0; z-index:90;
+  }
+  .status-dot { display:flex; align-items:center; gap:10px; font-size:13px; font-weight:500; color:var(--text-muted); }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--success); box-shadow: 0 0 12px var(--success); animation:pulse 2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 229, 160, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0, 229, 160, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 229, 160, 0); } }
+
+  .tab-content { display:none; padding:40px; animation:slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+  .tab-content.active { display:block; }
+  @keyframes slideUp { from{opacity:0; transform:translateY(20px)} to{opacity:1; transform:translateY(0)} }
+
+  /* ── Stats Cards (Premium) ── */
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:24px; margin-bottom:40px; }
+  .stat-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:24px;
+    padding:32px; position:relative; overflow:hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  .stat-card:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+  .stat-card::after { content:''; position:absolute; top:-50%; right:-50%; width:100px; height:100px; background:var(--primary); filter:blur(80px); opacity:0.1; }
+  .stat-label { font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1.5px; font-weight:700; margin-bottom:12px; }
+  .stat-value { font-family:'Space Mono',monospace; font-size:36px; font-weight:700; color:var(--text); line-height:1; }
+  .stat-card.danger .stat-value { color:var(--danger); }
+  .stat-card.success .stat-value { color:var(--success); }
+
+  /* ── Panels ── */
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:24px; overflow:hidden; margin-bottom:32px; backdrop-filter:blur(var(--blur)); }
+  .panel-header { padding:24px 32px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .panel-title { font-size:16px; font-weight:700; letter-spacing:0.5px; }
+  
+  .badge { background:var(--primary-glow); color:var(--success); font-size:11px; padding:4px 12px; border-radius:100px; font-weight:700; text-transform:uppercase; }
+
+  /* ── Tables ── */
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th { padding:18px 32px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); font-weight:700; }
+  td { padding:18px 32px; font-size:14px; border-bottom:1px solid var(--border); }
+  tr:last-child td { border:none; }
+  tr:hover td { background:var(--glass-bg); }
+  
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:100px; font-size:12px; font-weight:700; text-transform:uppercase; }
+  .chip.permit { background:rgba(0,229,160,0.1); color:var(--success); border:1px solid rgba(0,229,160,0.2); }
+  .chip.deny   { background:rgba(255,77,109,0.1); color:var(--danger); border:1px solid rgba(255,77,109,0.2); }
+  
+  /* Animación de nueva fila */
+  .new-row { animation: highlightRow 3s ease-out; }
+  @keyframes highlightRow { 0% { background: var(--primary-glow); } 100% { background: transparent; } }
+
+  /* ── Forms ── */
+  .form-panel { padding:32px; }
+  .field { margin-bottom:20px; }
+  .field label { font-size:12px; color:var(--text-muted); display:block; margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+  .field input { width:100%; background:var(--glass-bg); border:1px solid var(--border); border-radius:12px; padding:12px 16px; color:var(--text); outline:none; font-family:inherit; transition:all 0.3s; }
+  .field input:focus { border-color:var(--primary); box-shadow: 0 0 0 4px var(--primary-glow); }
+  
+  .btn { padding:14px 24px; border-radius:14px; border:none; cursor:pointer; font-size:14px; font-weight:700; transition:all 0.3s; display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+  .btn-primary { background:var(--primary); color:#fff; box-shadow: 0 10px 20px var(--primary-glow); }
+  .btn-primary:hover { transform:translateY(-2px); box-shadow: 0 15px 30px var(--primary-glow); filter: brightness(1.1); }
+  .btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+  .btn-outline:hover { background:var(--glass-bg); border-color:var(--text-muted); }
+
+  /* ── Items ── */
+  .est-item { display:flex; align-items:center; justify-content:space-between; padding:20px 32px; border-bottom:1px solid var(--border); transition: 0.2s; }
+  .est-item:hover { background:var(--glass-bg); }
+  .est-nombre { font-size:15px; font-weight:600; margin-bottom:4px; }
+  .est-codigo { font-family:'Space Mono',monospace; font-size:12px; color:var(--text-muted); }
+  
+  .status-badge { padding:4px 10px; border-radius:8px; font-size:10px; font-weight:800; text-transform:uppercase; }
+  .status-online  { background:rgba(0,229,160,0.15); color:var(--success); }
+  .status-offline { background:rgba(255,255,255,0.05); color:var(--text-muted); }
+
+  .toggle { width:44px; height:24px; border-radius:100px; border:none; cursor:pointer; position:relative; transition:0.3s; }
+  .toggle.on { background:var(--primary); }
+  .toggle.off { background:var(--border); }
+  .toggle::after { content:''; position:absolute; width:18px; height:18px; background:#fff; border-radius:50%; top:3px; left:3px; transition:0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+  .toggle.on::after { left:23px; }
+  
+  /* ── Modals (Glass) ── */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter: blur(8px); display:flex; align-items:center; justify-content:center; z-index:1000; opacity:0; pointer-events:none; transition:0.4s; }
+  .modal-overlay.show { opacity:1; pointer-events:all; }
+  .modal { background:var(--surface-solid); border:1px solid var(--border); border-radius:32px; padding:0; text-align:center; max-width:440px; width:90%; overflow:hidden; box-shadow: 0 30px 60px rgba(0,0,0,0.4); transform: scale(0.9); transition: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .modal-overlay.show .modal { transform: scale(1); }
+  
+  .modal-header-img { height:160px; background: linear-gradient(135deg, var(--primary), var(--accent)); position:relative; }
+  .modal-photo {
+    width:120px; height:120px; border-radius:35%; border:6px solid var(--surface-solid);
+    background:var(--bg); position:absolute; bottom:-60px; left:50%; transform:translateX(-50%);
+    overflow:hidden; box-shadow:0 15px 30px rgba(0,0,0,0.3); border:4px solid var(--surface-solid);
+  }
+  .modal-photo img { width:100%; height:100%; object-fit:cover; }
+  .btn-camera, .btn-upload-photo {
+    position:absolute; bottom:8px; width:36px; height:36px; border-radius:50%; 
+    background:var(--primary); color:#fff; border:none; cursor:pointer; 
+    display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.3);
+    transition: transform 0.2s;
+  }
+  .btn-camera { right:8px; }
+  .btn-upload-photo { left:8px; }
+  .btn-camera:hover, .btn-upload-photo:hover { transform: scale(1.1); }
+  .btn-camera i, .btn-upload-photo i { width:18px; height:18px; }
+  
+  .modal-body { padding:80px 40px 40px; }
+  #qrBox { background:#fff; border-radius:24px; padding:20px; display:inline-block; margin:24px 0; box-shadow:0 10px 20px rgba(0,0,0,0.1); }
+  .modal-nombre { font-size:24px; font-weight:700; color:var(--text); margin-bottom:8px; }
+  .modal-detalle { font-size:14px; color:var(--text-muted); margin-bottom:16px; font-weight:500; }
+  
+  /* Scrollbar */
+  ::-webkit-scrollbar { width:8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius:10px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  /* Mapa Styles */
+  .map-pin {
+    position: absolute; width: 40px; height: 40px; transform: translate(-50%, -50%);
+    cursor: pointer; z-index: 20; transition: transform 0.3s;
+  }
+  .map-pin.dragging { cursor: grabbing; transition: none; z-index: 100; }
+  .edit-mode .map-pin { border: 2px dashed var(--accent); border-radius: 50%; padding: 10px; }
+  .map-pin:hover { transform: translate(-50%, -50%) scale(1.2); }
+  .pin-dot {
+    width: 16px; height: 16px; border-radius: 50%; border: 3px solid #fff;
+    box-shadow: 0 0 20px currentColor;
+  }
+  .pin-label {
+    position: absolute; top: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.8); color: #fff; padding: 4px 8px; border-radius: 6px;
+    font-size: 10px; white-space: nowrap; font-weight: 700; opacity: 0; transition: 0.2s;
+  }
+  .map-pin:hover .pin-label { opacity: 1; top: 28px; }
+  .pin-online { color: var(--success); }
+  .pin-offline { color: var(--danger); }
+  .pulse { animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 70% { transform: scale(3); opacity: 0; } 100% { transform: scale(3); opacity: 0; } }
+
+  /* Toasts Mejorados */
+  #toast {
+    position: fixed; top: 32px; right: 32px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .toast-card {
+    background: var(--surface); backdrop-filter: blur(var(--blur));
+    border: 1px solid var(--border); padding: 16px; border-radius: 20px;
+    display: flex; align-items: center; gap: 16px; min-width: 320px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    transform: translateX(120%); transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .toast-card.show { transform: translateX(0); }
+  .toast-photo { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; border: 2px solid var(--border); }
+  .toast-info { flex: 1; }
+  .toast-name { font-weight: 700; font-size: 14px; display: block; color: var(--text); }
+  .toast-status { font-size: 12px; font-weight: 600; text-transform: uppercase; }
+  .toast-permit { border-left: 4px solid var(--success); }
+  .toast-deny { border-left: 4px solid var(--danger); }
+  .toast-permit .toast-status { color: var(--success); }
+  .toast-deny .toast-status { color: var(--danger); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-header">
+    <div class="logo">
+      <div class="logo-icon"><img src="/static/logo_uceva.png" alt="UCEVA"></div>
+      <div>
+        <h1>ACCESO IoT</h1>
+        <span>Soberanía Digital</span>
+      </div>
+    </div>
+  </div>
+  <div class="nav-items">
+    <div class="nav-item active" onclick="showTab('monitor', event)"><i data-lucide="layout-dashboard"></i> Monitor En Vivo</div>
+    <div class="nav-item" onclick="showTab('estudiantes', event)"><i data-lucide="users"></i> Estudiantes</div>
+    <div class="nav-item" onclick="showTab('dispositivos', event)"><i data-lucide="shield-check"></i> Dispositivos</div>
+    <div class="nav-item" onclick="showTab('reportes', event)"><i data-lucide="file-text"></i> Reportes</div>
+    <div class="nav-item" onclick="showTab('mapa', event)"><i data-lucide="map"></i> Ubicación</div>
+    <div class="nav-item" onclick="showTab('auditoria', event)"><i data-lucide="history"></i> Auditoría</div>
+  </div>
+  
+    <button class="btn btn-outline" id="themeToggle" style="width:100%; font-size:12px" onclick="toggleTheme()">
+      <i data-lucide="moon"></i> MODO OSCURO
+    </button>
+    <button class="btn btn-primary" style="width:100%; font-size:12px; background:var(--danger); box-shadow:none" onclick="logout()">
+      <i data-lucide="log-out"></i> CERRAR SESIÓN
+    </button>
+  </div>
+</nav>
+
+<div class="content-area">
+  <header>
+    <div class="status-dot">
+      <div class="dot" id="mqttDot"></div>
+      <span id="mqttStatus">SISTEMA ONLINE</span>
+    </div>
+    <div style="display:flex; gap:16px; align-items:center">
+      <button class="btn btn-outline" id="muteToggle" style="padding:8px; border-radius:12px; border-color:transparent" onclick="toggleMute()" title="Silenciar Alertas">
+        <i data-lucide="volume-2"></i>
+      </button>
+      <span class="badge" style="background:var(--glass-bg); color:var(--text-muted); border:1px solid var(--border)">V2.5 SECURE</span>
+      <div class="badge">UCEVA • SEMESTRE VIII</div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Tab: Monitor -->
+    <div id="tab-monitor" class="tab-content active">
+      <div class="stats">
+        <div class="stat-card success">
+          <div class="stat-label">Estudiantes</div>
+          <div class="stat-value" id="statEst">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Accesos</div>
+          <div class="stat-value" id="statTotal">—</div>
+        </div>
+        <div class="stat-card success">
+          <div class="stat-label">Permitidos Hoy</div>
+          <div class="stat-value" id="statPermit">—</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="stat-label">Denegados Hoy</div>
+          <div class="stat-value" id="statDeny">—</div>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div style="display:grid; grid-template-columns: 2fr 1fr; gap:32px; margin-bottom:32px;">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">FLUJO DE ACCESO (24H)</span>
+            <i data-lucide="trending-up" style="color:var(--primary)"></i>
+          </div>
+          <div style="padding:24px; height:320px;">
+            <canvas id="chartFlow"></canvas>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">DISTRIBUCIÓN ACADÉMICA</span>
+            <i data-lucide="pie-chart" style="color:var(--primary)"></i>
+          </div>
+          <div style="padding:24px; height:320px;">
+            <canvas id="chartCarreras"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">MONITOREO EN TIEMPO REAL</span>
+          <span class="badge">LIVE FEED</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fecha/Hora</th><th>QR</th><th>Estudiante</th><th>Carrera</th><th>Estado</th></tr></thead>
+            <tbody id="accesosBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Estudiantes -->
+    <div id="tab-estudiantes" class="tab-content">
+      <div style="display:grid; grid-template-columns: 380px 1fr; gap:32px; align-items: start;">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">REGISTRAR ESTUDIANTE</span>
+            <i data-lucide="user-plus" style="color:var(--primary)"></i>
+          </div>
+          <div class="form-panel">
+            <div class="field"><label>Código Institucional</label><input type="text" id="fCodigo" placeholder="Ej: 240222015"></div>
+            <div class="field"><label>Nombre Completo</label><input type="text" id="fNombre" placeholder="Nombre y Apellidos"></div>
+            <div class="field"><label>Programa Académico</label><input type="text" id="fCarrera" placeholder="Ingeniería..."></div>
+            <div class="field"><label>Semestre Actual</label><input type="number" id="fSemestre" value="1" min="1" max="12"></div>
+            <button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="agregarEstudiante()">
+              <i data-lucide="save"></i> GUARDAR REGISTRO
+            </button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">BASE DE DATOS</span>
+            <span class="badge" id="estBadge">0</span>
+          </div>
+          <div style="padding:24px 32px; border-bottom:1px solid var(--border); display:flex; gap:16px; background:var(--glass-bg)">
+            <div style="position:relative; flex:1">
+              <i data-lucide="search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); width:16px; color:var(--text-muted)"></i>
+              <input type="text" id="estSearch" placeholder="Buscar por nombre o código..." class="field" style="margin:0; padding-left:40px; width:100%" oninput="filtrarEstudiantes()">
+            </div>
+            <select id="estFilterCarrera" class="field" style="margin:0; width:220px" onchange="filtrarEstudiantes()">
+              <option value="">Todos los programas</option>
+            </select>
+          </div>
+          <div id="estList" style="max-height:600px; overflow-y:auto"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Dispositivos -->
+    <div id="tab-dispositivos" class="tab-content">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">ESTADO DE LA INFRAESTRUCTURA IoT</span>
+          <i data-lucide="cpu" style="color:var(--primary)"></i>
+        </div>
+        <div id="devList" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:24px; padding:32px;"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Reportes -->
+    <div id="tab-reportes" class="tab-content">
+      <div class="report-controls" style="gap:24px; padding:32px; border-radius:24px;">
+        <div class="field" style="margin:0; flex:1">
+          <label>Seleccionar Fecha</label>
+          <input type="date" id="reportDate" class="input-date" style="width:100%">
+        </div>
+        <div style="display:flex; gap:12px; align-self: flex-end;">
+          <button class="btn btn-primary" onclick="consultarReporte()">
+            <i data-lucide="search"></i> CONSULTAR
+          </button>
+          <button class="btn btn-outline" onclick="exportar('csv')">
+            <i data-lucide="download"></i> CSV
+          </button>
+          <button class="btn btn-outline" onclick="exportar('json')">
+            <i data-lucide="code"></i> JSON
+          </button>
+        </div>
+      </div>
+      <div class="grid-2-report" style="grid-template-columns: 400px 1fr; gap:32px; margin-top:32px;">
+        <div class="panel">
+          <div class="panel-header">RESUMEN DE ASISTENCIA</div>
+          <div id="repResumen"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">DETALLE CRONOLÓGICO</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Hora</th><th>Estudiante</th><th>Punto de Acceso</th></tr></thead>
+              <tbody id="repDetalle"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Mapa -->
+    <div id="tab-mapa" class="tab-content">
+      <div class="panel" style="padding:0; height:calc(100vh - 180px); position:relative; overflow:hidden; background: #0f172a;">
+        <div class="panel-header" style="position:absolute; top:24px; left:24px; z-index:10; background:rgba(15,23,42,0.8); backdrop-filter:blur(10px); border-radius:16px; width:auto; display:flex; gap:16px; align-items:center;">
+          <span class="panel-title">MAPA DE DISPOSITIVOS - CAMPUS UCEVA</span>
+          <button class="btn btn-outline" id="btnEditMapa" style="padding:4px 12px; font-size:10px" onclick="toggleEditMapa()">
+            <i data-lucide="edit"></i> EDITAR POSICIONES
+          </button>
+        </div>
+        
+        <!-- Campus Grid/Blueprint with real Image -->
+        <div id="campusMap" style="width:100%; height:100%; position:relative; background: url('/static/mapa_campus.jpg') center/cover no-repeat;">
+          <!-- Los Pines se cargan dinámicamente aquí -->
+          <div id="mapPins" style="width:100%; height:100%"></div>
+        </div>
+
+        <div style="position:absolute; bottom:24px; left:24px; display:flex; gap:16px; z-index:10;">
+          <div class="badge" style="background:rgba(0,229,160,0.2); color:#00e5a0; border:1px solid #00e5a0">● ONLINE</div>
+          <div class="badge" style="background:rgba(255,77,109,0.2); color:#ff4d6d; border:1px solid #ff4d6d">○ OFFLINE</div>
+        </div>
+      </div>
+    </div>
+    <div id="tab-auditoria" class="tab-content">
+      <div class="panel">
+        <div class="panel-header">LOGS DEL SISTEMA</div>
+        <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>IP</th></tr></thead><tbody id="auditoriaBody"></tbody></table></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header-img">
+      <div class="modal-photo">
+        <img id="modalFoto" src="/static/placeholder.png" alt="Foto">
+        <button class="btn-camera" onclick="abrirCamara()" title="Capturar con Cámara">
+          <i data-lucide="camera"></i>
+        </button>
+        <button class="btn-upload-photo" onclick="document.getElementById('fileInput').click()" title="Subir Archivo">
+          <i data-lucide="upload"></i>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div id="qrBox"></div>
+      <div class="modal-nombre" id="modalNombre">Nombre del Estudiante</div>
+      <div class="modal-detalle" id="modalDetalle">Código • Carrera • Semestre</div>
+      
+      <input type="file" id="fileInput" hidden accept="image/*" onchange="subirFotoDirecto(this)">
+      
+      <!-- Video para webcam (oculto por defecto) -->
+      <div id="webcamContainer" style="display:none; margin-top:20px;">
+        <video id="webcam" autoplay playsinline style="width:100%; border-radius:16px; background:#000;"></video>
+        <div style="display:flex; gap:12px; margin-top:16px;">
+          <button class="btn btn-primary" style="flex:1" onclick="capturarFoto()">
+            <i data-lucide="camera"></i> CAPTURAR
+          </button>
+          <button class="btn btn-outline" style="flex:1" onclick="cerrarCamara()">
+            CANCELAR
+          </button>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-top:32px;">
+        <button class="btn btn-outline" style="flex:1" onclick="cerrarModal()">CERRAR</button>
+        <button class="btn btn-primary" style="flex:1" onclick="descargarQR()">DESCARGAR QR</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Login Overlay -->
+<div class="modal-overlay show" id="loginOverlay" style="z-index: 2000;">
+  <div class="modal" style="padding: 48px; max-width: 400px;">
+    <div class="logo-icon" style="margin: 0 auto 24px; width: 64px; height: 64px; border-radius: 20px;">
+      <img src="/static/logo_uceva.png" alt="U">
+    </div>
+    <h2 style="font-size: 24px; font-weight: 800; margin-bottom: 8px;">BIENVENIDO</h2>
+    <p style="color:var(--text-muted); font-size: 14px; margin-bottom: 32px;">Panel de Control de Acceso IoT</p>
+    <div class="form-panel" style="padding: 0; text-align: left;">
+      <div class="field">
+        <label>Usuario</label>
+        <input type="text" id="lUser" placeholder="admin">
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" id="lPass" placeholder="••••••••">
+      </div>
+      <button class="btn btn-primary" id="loginBtn" style="width:100%; height:52px; margin-top:16px;" onclick="intentarLogin()">
+        ACCEDER AL SISTEMA <i data-lucide="chevron-right"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── 1. SEGURIDAD Y CONFIGURACIÓN ──────────────────────────────────────────
+  let token = localStorage.getItem("token");
+  const socket = io();
+  let qrNombreArchivo = "";
+  let chartFlow, chartCarreras;
+
+  const chartColors = {
+    primary: '#00914c',
+    primaryAlpha: 'rgba(0, 145, 76, 0.2)',
+    accent: '#00e5a0',
+    text: '#9ca3af',
+    border: 'rgba(255, 255, 255, 0.08)'
+  };
+
+  async function intentarLogin() {
+    const u = document.getElementById("lUser").value.trim();
+    const p = document.getElementById("lPass").value.trim();
+    if (!u || !p) return alert("⚠️ Ingrese usuario y contraseña");
+
+    const btn = document.getElementById("loginBtn");
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> VALIDANDO...';
+    btn.disabled = true;
+
+    try {
+      const res = await fetch("/api/login", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({username:u, password:p})
+      });
+      const data = await res.json();
+      if (data.ok && data.token) {
+        localStorage.setItem("token", data.token);
+        location.reload();
+      } else {
+        alert("🚫 " + (data.msg || "Credenciales inválidas"));
+      }
+    } catch (e) {
+      alert("❌ Error de conexión con el servidor");
+    } finally {
+      btn.innerHTML = original;
+      btn.disabled = false;
+      lucide.createIcons();
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("token");
+    location.reload();
+  }
+
+  document.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && document.getElementById('loginOverlay').classList.contains('show')) {
+      intentarLogin();
+    }
+  });
+
+  // ── 2. NAVEGACIÓN Y TEMA ──────────────────────────────────────────────────
+  function showTab(tabId, event) {
+    console.log("Cambiando a pestaña:", tabId);
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    
+    const targetTab = document.getElementById(`tab-${tabId}`);
+    if (targetTab) targetTab.classList.add('active');
+    
+    if (event) event.currentTarget.classList.add('active');
+    if (tabId === 'auditoria') cargarAuditoria();
+    if (tabId === 'mapa') cargarMapa();
+    
+    try { lucide.createIcons(); } catch(e) {}
+  }
+
+  let isEditMapa = false;
+
+  function toggleEditMapa() {
+    isEditMapa = !isEditMapa;
+    const btn = document.getElementById("btnEditMapa");
+    const container = document.getElementById("tab-mapa");
+    
+    if (isEditMapa) {
+      btn.classList.add("btn-primary");
+      btn.innerHTML = '<i data-lucide="check"></i> GUARDAR POSICIONES';
+      container.classList.add("edit-mode");
+    } else {
+      btn.classList.remove("btn-primary");
+      btn.innerHTML = '<i data-lucide="edit"></i> EDITAR POSICIONES';
+      container.classList.remove("edit-mode");
+      cargarMapa(); // Recargar para asegurar posiciones guardadas
+    }
+    lucide.createIcons();
+  }
+
+  async function cargarMapa() {
+    const data = await apiFetch("/api/dispositivos");
+    if (!data) return;
+    
+    const container = document.getElementById("mapPins");
+    container.innerHTML = data.map(d => `
+      <div id="pin-${d.id}" class="map-pin ${d.online?'pin-online':'pin-offline'}" 
+           style="left:${d.pos_x || 50}%; top:${d.pos_y || 50}%" 
+           onmousedown="startDrag(event, ${d.id})"
+           onclick="${!isEditMapa ? `showTab('dispositivos')` : ''}">
+        <div class="pin-dot ${d.online?'pulse':''}" style="background:currentColor"></div>
+        <div class="pin-label">${d.nombre}</div>
+      </div>
+    `).join("");
+  }
+
+  let dragTarget = null;
+
+  function startDrag(e, id) {
+    if (!isEditMapa) return;
+    e.preventDefault();
+    const el = document.getElementById(`pin-${id}`);
+    const rect = el.getBoundingClientRect();
+    const mapRect = document.getElementById("campusMap").getBoundingClientRect();
+    
+    dragTarget = { 
+      el: el, 
+      id: id, 
+      moved: false,
+      x: ((rect.left + rect.width/2 - mapRect.left) / mapRect.width) * 100,
+      y: ((rect.top + rect.height/2 - mapRect.top) / mapRect.height) * 100
+    };
+    
+    dragTarget.el.classList.add("dragging");
+    document.onmousemove = dragMove;
+    document.onmouseup = stopDrag;
+  }
+
+  function dragMove(e) {
+    if (!dragTarget) return;
+    dragTarget.moved = true;
+    const map = document.getElementById("campusMap");
+    const rect = map.getBoundingClientRect();
+    
+    let x = ((e.clientX - rect.left) / rect.width) * 100;
+    let y = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    x = Math.max(0, Math.min(100, x));
+    y = Math.max(0, Math.min(100, y));
+    
+    dragTarget.el.style.left = x + "%";
+    dragTarget.el.style.top = y + "%";
+    dragTarget.x = x;
+    dragTarget.y = y;
+  }
+
+  async function stopDrag() {
+    if (!dragTarget || !dragTarget.moved) {
+      if (dragTarget) dragTarget.el.classList.remove("dragging");
+      dragTarget = null;
+      document.onmousemove = null;
+      document.onmouseup = null;
+      return;
+    }
+    
+    const { id, x, y } = dragTarget;
+    console.log(`Guardando posición para ${id}: ${x}, ${y}`);
+    
+    // Guardar posición en servidor
+    await apiFetch(`/api/dispositivos/${id}/posicion`, {
+      method: "PUT",
+      body: JSON.stringify({ x: Math.round(x), y: Math.round(y) })
+    });
+    
+    dragTarget.el.classList.remove("dragging");
+    dragTarget = null;
+    document.onmousemove = null;
+    document.onmouseup = null;
+  }
+
+  function toggleTheme() {
+    const isLight = document.body.classList.toggle('light-mode');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    updateThemeUI(isLight);
+  }
+
+  function updateThemeUI(isLight) {
+    const btn = document.getElementById('themeToggle');
+    if (btn) {
+      btn.innerHTML = isLight ? '<i data-lucide="sun"></i> MODO CLARO' : '<i data-lucide="moon"></i> MODO OSCURO';
+      try { lucide.createIcons(); } catch(e) {}
+    }
+  }
+
+  if (localStorage.getItem('theme') === 'light') {
+    document.body.classList.add('light-mode');
+    updateThemeUI(true);
+  }
+
+  // ── 3. COMUNICACIÓN CON EL SERVIDOR ───────────────────────────────────────
+  async function apiFetch(url, options = {}) {
+    if (!token) return null;
+    if (!options.headers) options.headers = {};
+    options.headers["Authorization"] = `Bearer ${token}`;
+    
+    // Si hay body y no es FormData, poner JSON
+    if (options.body && !(options.body instanceof FormData)) {
+      options.headers["Content-Type"] = "application/json";
+    }
+    
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 401) { logout(); return null; }
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn("Error de conexión:", url);
+      return null;
+    }
+  }
+
+  // Init
+  const hoy = new Date().toISOString().split('T')[0];
+  document.getElementById("reportDate").value = hoy;
+  actualizarStats(); cargarEstudiantes(); cargarDispositivos();
+  setInterval(actualizarStats, 10000); setInterval(cargarDispositivos, 10000);
+  
+  // Inicializar Lucide Icons de forma segura
+  try {
+    lucide.createIcons();
+  } catch (e) {
+    console.error("Error cargando iconos Lucide:", e);
+  }
+
+  // Actualizar el manejador de SocketIO para animar filas
+  socket.on("nuevo_acceso", (e) => {
+    const body = document.getElementById("accesosBody");
+    const row = `<tr class="new-row">
+      <td class="mono muted" style="color:var(--text-muted)">${e.fecha_hora}</td>
+      <td class="mono">${e.codigo_qr}</td>
+      <td style="font-weight:600">${e.nombre}</td>
+      <td style="color:var(--text-muted)">${e.carrera}</td>
+      <td><span class="chip ${e.decision}">${e.decision}</span></td>
+    </tr>`;
+    body.insertAdjacentHTML("afterbegin", row);
+    actualizarStats();
+    mostrarToast(e);
+  });
+
+  // ── 3. SONIDOS Y NOTIFICACIONES ──────────────────────────────────────────
+  let isMuted = localStorage.getItem("muted") === "true";
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  function toggleMute() {
+    isMuted = !isMuted;
+    localStorage.setItem("muted", isMuted);
+    const btn = document.getElementById("muteToggle");
+    btn.innerHTML = isMuted ? '<i data-lucide="volume-x"></i>' : '<i data-lucide="volume-2"></i>';
+    lucide.createIcons();
+  }
+  if (isMuted) toggleMute(); // Sincronizar UI inicial
+
+  function reproducirSonido(tipo) {
+    if (isMuted) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (tipo === 'permit') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+    } else {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+    }
+  }
+
+  function mostrarToast(e) {
+    reproducirSonido(e.decision);
+    const container = document.getElementById("toast");
+    const id = "t-" + Date.now();
+    const photo = `/static/fotos/${e.codigo_qr.split(':')[0]}.png`;
+    
+    const html = `
+      <div id="${id}" class="toast-card toast-${e.decision}">
+        <img src="${photo}" class="toast-photo" onerror="this.src='https://i.pravatar.cc/100?u=${e.codigo_qr}'">
+        <div class="toast-info">
+          <span class="toast-name">${e.nombre || 'Desconocido'}</span>
+          <span class="toast-status">${e.decision === 'permit' ? 'Acceso Autorizado' : 'Acceso Denegado'}</span>
+        </div>
+      </div>
+    `;
+    
+    container.insertAdjacentHTML("beforeend", html);
+    const el = document.getElementById(id);
+    setTimeout(() => el.classList.add("show"), 100);
+    setTimeout(() => {
+      el.classList.remove("show");
+      setTimeout(() => el.remove(), 500);
+    }, 4000);
+  }
+
+  async function actualizarStats() {
+    const data = await apiFetch("/api/stats");
+    if (!data) return;
+    document.getElementById("statEst").textContent = data.estudiantes;
+    document.getElementById("statTotal").textContent = data.total_accesos;
+    document.getElementById("statPermit").textContent = data.permits_hoy;
+    document.getElementById("statDeny").textContent = data.denies_hoy;
+  }
+
+  let todosLosEstudiantes = [];
+
+  async function cargarEstudiantes() {
+    const data = await apiFetch("/api/estudiantes");
+    if (!data) return;
+    todosLosEstudiantes = data;
+    
+    // Actualizar select de carreras
+    const carreras = [...new Set(todosLosEstudiantes.map(e => e.carrera))];
+    const select = document.getElementById("estFilterCarrera");
+    select.innerHTML = '<option value="">Todas las carreras</option>' + 
+      carreras.map(c => `<option value="${c}">${c}</option>`).join("");
+    
+    filtrarEstudiantes();
+  }
+
+  function filtrarEstudiantes() {
+    const search = document.getElementById("estSearch").value.toLowerCase();
+    const carrera = document.getElementById("estFilterCarrera").value;
+    
+    const filtrados = todosLosEstudiantes.filter(e => {
+      const matchSearch = e.nombre.toLowerCase().includes(search) || e.codigo.includes(search);
+      const matchCarrera = !carrera || e.carrera === carrera;
+      return matchSearch && matchCarrera;
+    });
+
+    document.getElementById("estBadge").textContent = filtrados.length;
+    document.getElementById("estList").innerHTML = filtrados.map(e => `
+      <div class="est-item">
+        <div>
+          <div class="est-nombre">${e.nombre}</div>
+          <div class="est-codigo">${e.codigo} • ${e.carrera} • Semestre ${e.semestre}</div>
+        </div>
+        <div style="display:flex; gap:12px">
+          <button class="btn-outline" style="padding:8px" onclick="verPerfil('${e.codigo}','${e.nombre}','${e.carrera}',${e.semestre})" title="Ver Perfil">
+            <i data-lucide="external-link" style="width:16px; height:16px"></i>
+          </button>
+          <button class="toggle ${e.activo?'on':'off'}" onclick="toggleEstudiante('${e.codigo}',${e.activo?0:1},this)"></button>
+          <button class="btn-outline" style="padding:8px; color:var(--danger); border-color:transparent" onclick="eliminarEstudiante('${e.codigo}','${e.nombre}')" title="Eliminar">
+            <i data-lucide="trash-2" style="width:16px; height:16px"></i>
+          </button>
+        </div>
+      </div>`).join("");
+    lucide.createIcons();
+  }
+
+  async function agregarEstudiante() {
+    const payload = {
+      codigo: document.getElementById("fCodigo").value, 
+      nombre: document.getElementById("fNombre").value, 
+      carrera: document.getElementById("fCarrera").value,
+      semestre: parseInt(document.getElementById("fSemestre").value)
+    };
+    const data = await apiFetch("/api/estudiantes", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+    if (data && data.ok) { 
+      cargarEstudiantes(); 
+      actualizarStats(); 
+      verPerfil(payload.codigo, payload.nombre, payload.carrera, payload.semestre); 
+    }
+  }
+
+  async function toggleEstudiante(c, s, b) {
+    await apiFetch(`/api/estudiantes/${c}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({activo:s})});
+    cargarEstudiantes();
+  }
+
+  async function eliminarEstudiante(c, n) {
+    if (confirm(`¿Eliminar a ${n}?`)) { 
+      await apiFetch(`/api/estudiantes/${c}`, {method:"DELETE"}); 
+      cargarEstudiantes(); 
+      actualizarStats(); 
+    }
+  }
+
+  async function verPerfil(c, n, car, sem) {
+    const data = await apiFetch(`/api/estudiantes/${c}/qr`);
+    if (data && data.ok) mostrarModalPerfil(data.qr_seguro, n, car, c, sem);
+  }
+
+  let currentCodigo = "";
+  let stream = null;
+
+  async function subirFotoDirecto(input) {
+    if (!input.files || !input.files[0]) return;
+    console.log("Subiendo archivo para:", currentCodigo);
+    const formData = new FormData();
+    formData.append("foto", input.files[0]);
+
+    const data = await apiFetch(`/api/estudiantes/${currentCodigo}/foto`, {
+      method: "POST",
+      body: formData
+    });
+    
+    if (data && data.ok) {
+      console.log("Subida exitosa:", data.foto_url);
+      document.getElementById("modalFoto").src = data.foto_url + "?t=" + Date.now();
+      cargarEstudiantes();
+    } else {
+      alert("Error al subir la foto");
+    }
+  }
+
+  async function abrirCamara() {
+    const video = document.getElementById("webcam");
+    const container = document.getElementById("webcamContainer");
+    container.style.display = "block";
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      lucide.createIcons();
+    } catch (e) {
+      alert("No se pudo acceder a la cámara");
+      container.style.display = "none";
+    }
+  }
+
+  function cerrarCamara() {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+    document.getElementById("webcamContainer").style.display = "none";
+  }
+
+  async function capturarFoto() {
+    const video = document.getElementById("webcam");
+    const canvas = document.createElement("canvas");
+    canvas.width = 400; canvas.height = 400;
+    const ctx = canvas.getContext("2d");
+    
+    // Recortar a cuadrado central
+    const size = Math.min(video.videoWidth, video.videoHeight);
+    const x = (video.videoWidth - size) / 2;
+    const y = (video.videoHeight - size) / 2;
+    ctx.drawImage(video, x, y, size, size, 0, 0, 400, 400);
+
+    canvas.toBlob(async (blob) => {
+      console.log("Captura realizada, enviando blob...");
+      const formData = new FormData();
+      formData.append("foto", blob, "foto.png");
+      
+      const data = await apiFetch(`/api/estudiantes/${currentCodigo}/foto`, {
+        method: "POST",
+        body: formData
+      });
+
+      if (data && data.ok) {
+        console.log("Captura guardada:", data.foto_url);
+        document.getElementById("modalFoto").src = data.foto_url + "?t=" + Date.now();
+        cerrarCamara();
+        cargarEstudiantes();
+      } else {
+        alert("Error al guardar la captura");
+      }
+    }, "image/png");
+  }
+
+  function mostrarModalPerfil(txt, n, car, c, sem) {
+    currentCodigo = c;
+    cerrarCamara();
+    const box = document.getElementById("qrBox"); box.innerHTML = "";
+    new QRCode(box, {text:txt, width:180, height:180, colorDark:"#000000", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.H});
+    document.getElementById("modalNombre").textContent = n;
+    document.getElementById("modalDetalle").textContent = `${c} • ${car} • Semestre ${sem}`;
+    
+    // Intentar cargar foto local, si falla usar placeholder
+    const imgElement = document.getElementById("modalFoto");
+    imgElement.src = `/static/fotos/${c}.png?t=` + Date.now(); 
+    imgElement.onerror = () => {
+      imgElement.src = `https://i.pravatar.cc/150?u=${c}`;
+      imgElement.onerror = null; 
+    };
+
+    qrNombreArchivo = `PERFIL_${c}.png`;
+    document.getElementById("modalOverlay").classList.add("show");
+    lucide.createIcons();
+  }
+
+  function cerrarModal() { document.getElementById("modalOverlay").classList.remove("show"); }
+  function descargarQR() { const canvas = document.querySelector("#qrBox canvas"); const link = document.createElement("a"); link.download = qrNombreArchivo; link.href = canvas.toDataURL(); link.click(); }
+
+  async function cargarDispositivos() {
+    const data = await apiFetch("/api/dispositivos");
+    if (!data) return;
+    document.getElementById("devList").innerHTML = data.map(d => `
+      <div class="panel" style="margin-bottom:0">
+        <div style="padding:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:16px;">
+            <div class="logo-icon" style="background:var(--glass-bg); width:40px; height:40px; border-radius:12px;">
+              <i data-lucide="monitor" style="color:var(--primary)"></i>
+            </div>
+            <span class="status-badge ${d.online?'status-online':'status-offline'}">
+              ${d.online?'● ONLINE':'○ OFFLINE'}
+            </span>
+          </div>
+          <div style="font-weight:700; font-size:16px; margin-bottom:4px;">${d.nombre}</div>
+          <div class="est-codigo" style="margin-bottom:16px;">${d.device_id}</div>
+          
+          <div style="display:flex; gap:8px; padding:12px; background:var(--bg); border-radius:12px; margin-bottom:20px; font-family:'Space Mono'; font-size:11px; align-items:center; justify-content:space-between">
+            <span style="color:var(--text-muted)">SECRET: ••••••••</span>
+            <button class="btn-outline" style="padding:4px 8px; font-size:10px" onclick="navigator.clipboard.writeText('${d.device_secret}'); alert('Copiado')">
+              <i data-lucide="copy" style="width:12px"></i> COPIAR
+            </button>
+          </div>
+
+          <button class="btn btn-outline" style="width:100%; font-size:12px" onclick="editarDisp(${d.id},'${d.nombre}','${d.ubicacion}')">
+            <i data-lucide="settings"></i> CONFIGURAR
+          </button>
+        </div>
+      </div>`).join("");
+    lucide.createIcons();
+  }
+
+  async function editarDisp(id, n, u) {
+    const nn = prompt("Nombre:", n); const nu = prompt("Ubi:", u);
+    if (nn && nu) { 
+      await apiFetch(`/api/dispositivos/${id}`, {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({nombre:nn, ubicacion:nu, tipo:"entrada", activo:1})}); 
+      cargarDispositivos(); 
+    }
+  }
+
+  async function consultarReporte() {
+    const f = document.getElementById("reportDate").value;
+    const data = await apiFetch(`/api/reportes?fecha=${f}`);
+    if (!data) return;
+    document.getElementById("repResumen").innerHTML = data.resumen.map(r => `<div class="est-item"><span>${r.nombre}</span><b>${r.total}</b></div>`).join("");
+    document.getElementById("repDetalle").innerHTML = data.detalle.map(d => `<tr><td>${d.fecha_hora.split(' ')[1]}</td><td>${d.nombre}</td><td>${d.dispositivo}</td></tr>`).join("");
+  }
+
+  function exportar(fmt) { window.location.href = `/api/reportes/export/${fmt}?fecha=${document.getElementById("reportDate").value}`; }
+
+  async function cargarAuditoria() {
+    const data = await apiFetch("/api/auditoria");
+    if (!data) return;
+    document.getElementById("auditoriaBody").innerHTML = data.map(a => `<tr><td>${a.fecha_hora}</td><td>${a.usuario}</td><td>${a.accion}</td><td>${a.ip}</td></tr>`).join("");
+  }
+
+  // ── 4. INICIO AUTOMÁTICO ──────────────────────────────────────────────────
+  window.onload = () => {
+    // Si no hay token, no cargar datos (el overlay ya está visible por CSS)
+    if (!token) return;
+    
+    // Si hay token, ocultar el overlay y cargar todo
+    document.getElementById("loginOverlay").classList.remove("show");
+
+    const hoy = new Date().toISOString().split('T')[0];
+    const reportInput = document.getElementById("reportDate");
+    if (reportInput) reportInput.value = hoy;
+
+    actualizarStats(); 
+    cargarEstudiantes(); 
+    cargarDispositivos();
+    initCharts();
+    
+    setInterval(() => {
+      actualizarStats();
+      actualizarCharts();
+    }, 10000); 
+    
+    setInterval(cargarDispositivos, 30000);
+    
+    try { lucide.createIcons(); } catch(e) {}
+  };
+
+  async function initCharts() {
+    const ctxFlow = document.getElementById('chartFlow').getContext('2d');
+    const ctxCarr = document.getElementById('chartCarreras').getContext('2d');
+
+    chartFlow = new Chart(ctxFlow, {
+      type: 'line',
+      data: {
+        labels: Array.from({length:24}, (_,i) => `${String(i).padStart(2, '0')}:00`),
+        datasets: [{
+          label: 'Accesos',
+          borderColor: chartColors.primary,
+          backgroundColor: chartColors.primaryAlpha,
+          borderWidth: 3,
+          fill: true,
+          tension: 0.4,
+          data: []
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: chartColors.text } },
+          y: { grid: { color: chartColors.border }, ticks: { color: chartColors.text, stepSize: 1 } }
+        }
+      }
+    });
+
+    chartCarreras = new Chart(ctxCarr, {
+      type: 'doughnut',
+      data: {
+        labels: [],
+        datasets: [{
+          data: [],
+          backgroundColor: [
+            '#00914c', '#00e5a0', '#004d28', '#00ffb3', '#2ecc71'
+          ],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { color: chartColors.text, padding: 20, usePointStyle: true } }
+        },
+        cutout: '70%'
+      }
+    });
+
+    actualizarCharts();
+  }
+
+  async function actualizarCharts() {
+    const data = await apiFetch("/api/stats/charts");
+    if (!data) return;
+
+    // Actualizar Flujo
+    chartFlow.data.labels = data.flujo.labels.map(h => `${h}:00`);
+    chartFlow.data.datasets[0].data = data.flujo.data;
+    chartFlow.update();
+
+    // Actualizar Carreras
+    chartCarreras.data.labels = data.carreras.labels;
+    chartCarreras.data.datasets[0].data = data.carreras.data;
+    chartCarreras.update();
+  }
+</script>
+</body>
+</html>
